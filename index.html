@@ -1,464 +1,217 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Basic Bomberman HTML Game</title>
-  <meta charset="UTF-8">
+  <title>Bomberman Mobile</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
-  html, body {
-    height: 100%;
-    margin: 0;
-  }
+    html, body { height: 100%; margin: 0; background: black; color: white; overflow: hidden; font-family: sans-serif; }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
+    
+    /* Shrink canvas to fit mobile screens */
+    canvas { 
+      background: forestgreen; 
+      max-width: 100%; 
+      max-height: 50vh; 
+      object-fit: contain;
+    }
 
-  body {
-    background: black;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
+    .controls {
+      display: flex;
+      width: 100%;
+      justify-content: space-around;
+      align-items: center;
+      padding: 10px 0;
+      background: #111;
+    }
 
-  canvas {
-    background: forestgreen;
-  }
+    .d-pad {
+      display: grid;
+      grid-template-columns: repeat(3, 55px);
+      grid-template-rows: repeat(2, 55px);
+      gap: 5px;
+    }
+
+    .btn {
+      width: 55px;
+      height: 55px;
+      background: #333;
+      border: 2px solid #666;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      touch-action: manipulation;
+      user-select: none;
+    }
+
+    .btn:active { background: #555; }
+    .btn-down { grid-column: 2; }
+    
+    .bomb-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: #D72B16;
+      border: 4px solid white;
+    }
   </style>
 </head>
 <body>
-<canvas width="960" height="832" id="game"></canvas>
+
+  <canvas width="960" height="832" id="game"></canvas>
+
   <div class="controls">
-  <div class="d-pad">
-    <div></div>
-    <div class="btn" id="w">W</div>
-    <div></div>
-    <div class="btn" id="a">A</div>
-    <div class="btn" id="s">S</div>
-    <div class="btn" id="d">D</div>
+    <div class="d-pad">
+      <div style="grid-column: 2" class="btn" id="w">W</div>
+      <div class="btn" id="a">A</div>
+      <div class="btn btn-down" id="s">S</div>
+      <div class="btn" id="d">D</div>
+    </div>
+
+    <div class="btn bomb-btn" id="bomb">BOMB</div>
+
+    <div class="d-pad">
+      <div style="grid-column: 2" class="btn" id="up">▲</div>
+      <div class="btn" id="left">◀</div>
+      <div class="btn btn-down" id="down">▼</div>
+      <div class="btn" id="right">▶</div>
+    </div>
   </div>
 
-  <div class="btn bomb-btn" id="bomb">BOMB</div>
+  <script>
+    const canvas = document.getElementById('game');
+    const context = canvas.getContext('2d');
+    const grid = 64;
+    const numRows = 13;
+    const numCols = 15;
 
-  <div class="d-pad">
-    <div></div>
-    <div class="btn" id="up">▲</div>
-    <div></div>
-    <div class="btn" id="left">◀</div>
-    <div class="btn" id="down">▼</div>
-    <div class="btn" id="right">▶</div>
-  </div>
-</div>
+    // Assets and Level (from original source)
+    const softWallCanvas = document.createElement('canvas');
+    const softWallCtx = softWallCanvas.getContext('2d');
+    softWallCanvas.width = softWallCanvas.height = grid;
+    softWallCtx.fillStyle = 'black'; softWallCtx.fillRect(0, 0, grid, grid);
+    softWallCtx.fillStyle = '#a9a9a9'; softWallCtx.fillRect(1, 1, grid - 2, 20);
+    softWallCtx.fillRect(0, 23, 20, 18); softWallCtx.fillRect(22, 23, 42, 18);
 
-<script>
-  // ... (keep all your existing game logic and movePlayer/placeBomb functions)
+    const wallCanvas = document.createElement('canvas');
+    const wallCtx = wallCanvas.getContext('2d');
+    wallCanvas.width = wallCanvas.height = grid;
+    wallCtx.fillStyle = 'black'; wallCtx.fillRect(0, 0, grid, grid);
+    wallCtx.fillStyle = 'white'; wallCtx.fillRect(0, 0, grid - 2, grid - 2);
+    wallCtx.fillStyle = '#a9a9a9'; wallCtx.fillRect(2, 2, grid - 4, grid - 4);
 
-  // Helper function to attach touch events easily
-  function addTouch(id, dRow, dCol) {
-    document.getElementById(id).addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      movePlayer(dRow, dCol);
+    const types = { wall: '▉', softWall: 1, bomb: 2 };
+    let entities = [];
+    let cells = [];
+    const template = [
+      ['▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉'],
+      ['▉','x','x', , , , , , , , , ,'x','x','▉'],
+      ['▉','x','▉', ,'▉', ,'▉', ,'▉', ,'▉', ,'▉','x','▉'],
+      ['▉','x', , , , , , , , , , , ,'x','▉'],
+      ['▉', ,'▉', ,'▉', ,'▉', ,'▉', ,'▉', ,'▉', ,'▉'],
+      ['▉', , , , , , , , , , , , , ,'▉'],
+      ['▉', ,'▉', ,'▉', ,'▉', ,'▉', ,'▉', ,'▉', ,'▉'],
+      ['▉', , , , , , , , , , , , , ,'▉'],
+      ['▉', ,'▉', ,'▉', ,'▉', ,'▉', ,'▉', ,'▉', ,'▉'],
+      ['▉','x', , , , , , , , , , , ,'x','▉'],
+      ['▉','x','▉', ,'▉', ,'▉', ,'▉', ,'▉', ,'▉','x','▉'],
+      ['▉','x','x', , , , , , , , , ,'x','x','▉'],
+      ['▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉']
+    ];
+
+    function generateLevel() {
+      cells = [];
+      for (let row = 0; row < numRows; row++) {
+        cells[row] = [];
+        for (let col = 0; col < numCols; col++) {
+          if (!template[row][col] && Math.random() < 0.90) cells[row][col] = types.softWall;
+          else if (template[row][col] === types.wall) cells[row][col] = types.wall;
+        }
+      }
+    }
+
+    function Bomb(row, col, size, owner) {
+      this.row = row; this.col = col; this.radius = grid * 0.4; this.size = size;
+      this.owner = owner; this.alive = true; this.type = types.bomb; this.timer = 3000;
+      this.update = function(dt) {
+        this.timer -= dt;
+        if (this.timer <= 0) return blowUpBomb(this);
+        this.radius = Math.ceil(this.timer / 500) % 2 === 0 ? grid * 0.4 : grid * 0.5;
+      };
+      this.render = function() {
+        const x = (this.col + 0.5) * grid; const y = (this.row + 0.5) * grid;
+        context.fillStyle = 'black'; context.beginPath(); context.arc(x, y, this.radius, 0, 2 * Math.PI); context.fill();
+      };
+    }
+
+    function blowUpBomb(bomb) {
+      if (!bomb.alive) return; bomb.alive = false; cells[bomb.row][bomb.col] = null;
+      [{r:-1,c:0},{r:1,c:0},{r:0,c:-1},{r:0,c:1}].forEach(d => {
+        for(let i=0; i<bomb.size; i++) {
+          const r = bomb.row+d.r*i, c = bomb.col+d.c*i;
+          if (cells[r][c] === types.wall) return;
+          entities.push({row:r, col:c, alive:true, timer:300, update(dt){this.timer-=dt; if(this.timer<=0)this.alive=false}, render(){context.fillStyle='orange'; context.fillRect(this.col*grid, this.row*grid, grid, grid)}});
+          if (cells[r][c]) { cells[r][c] = null; return; }
+        }
+      });
+    }
+
+    const player = { row: 1, col: 1, numBombs: 1, bombSize: 3, render() { 
+      context.fillStyle = 'white'; context.beginPath(); context.arc((this.col+0.5)*grid, (this.row+0.5)*grid, grid*0.35, 0, 2*Math.PI); context.fill();
+    }};
+
+    // --- CORE SHARED LOGIC ---
+    function move(dr, dc) {
+      if (!cells[player.row + dr][player.col + dc]) {
+        player.row += dr; player.col += dc;
+      }
+    }
+
+    function dropBomb() {
+      if (!cells[player.row][player.col] && entities.filter(e => e.type === types.bomb).length < player.numBombs) {
+        entities.push(new Bomb(player.row, player.col, player.bombSize, player));
+        cells[player.row][player.col] = types.bomb;
+      }
+    }
+
+    // --- INPUTS ---
+    document.addEventListener('keydown', e => {
+      const k = e.key.toLowerCase();
+      if (k==='w' || e.keyCode===38) move(-1,0);
+      if (k==='s' || e.keyCode===40) move(1,0);
+      if (k==='a' || e.keyCode===37) move(0,-1);
+      if (k==='d' || e.keyCode===39) move(0,1);
+      if (e.keyCode===32) dropBomb();
     });
-  }
 
-  // WASD Touch Listeners
-  addTouch('w', -1, 0);
-  addTouch('s', 1, 0);
-  addTouch('a', 0, -1);
-  addTouch('d', 0, 1);
+    const bind = (id, fn) => {
+      document.getElementById(id).addEventListener('touchstart', e => { e.preventDefault(); fn(); });
+    };
 
-  // Arrow Touch Listeners
-  addTouch('up', -1, 0);
-  addTouch('down', 1, 0);
-  addTouch('left', 0, -1);
-  addTouch('right', 0, 1);
+    bind('w', ()=>move(-1,0)); bind('up', ()=>move(-1,0));
+    bind('s', ()=>move(1,0));  bind('down', ()=>move(1,0));
+    bind('a', ()=>move(0,-1)); bind('left', ()=>move(0,-1));
+    bind('d', ()=>move(0,1));  bind('right', ()=>move(0,1));
+    bind('bomb', dropBomb);
 
-  // Bomb Touch Listener
-  document.getElementById('bomb').addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    placeBomb();
-  });
-
-  // Also update the Keyboard listener to support physical WASD keys
-  document.addEventListener('keydown', function(e) {
-    const key = e.key.toLowerCase();
-    if (key === 'w' || e.which === 38) movePlayer(-1, 0);
-    else if (key === 's' || e.which === 40) movePlayer(1, 0);
-    else if (key === 'a' || e.which === 37) movePlayer(0, -1);
-    else if (key === 'd' || e.which === 39) movePlayer(0, 1);
-    else if (e.which === 32) placeBomb();
-  });
-</script>
-
-<script>
-const canvas = document.getElementById('game');
-const context = canvas.getContext('2d');
-const grid = 64;
-const numRows = 13;
-const numCols = 15;
-
-// create a new canvas and draw the soft wall image. then we can use this
-// canvas to draw the images later on
-const softWallCanvas = document.createElement('canvas');
-const softWallCtx = softWallCanvas.getContext('2d');
-softWallCanvas.width = softWallCanvas.height = grid;
-
-softWallCtx.fillStyle = 'black';
-softWallCtx.fillRect(0, 0, grid, grid);
-softWallCtx.fillStyle = '#a9a9a9';
-
-// 1st row brick
-softWallCtx.fillRect(1, 1, grid - 2, 20);
-
-// 2nd row bricks
-softWallCtx.fillRect(0, 23, 20, 18);
-softWallCtx.fillRect(22, 23, 42, 18);
-
-// 3rd row bricks
-softWallCtx.fillRect(0, 43, 42, 20);
-softWallCtx.fillRect(44, 43, 20, 20);
-
-// create a new canvas and draw the soft wall image. then we can use this
-// canvas to draw the images later on
-const wallCanvas = document.createElement('canvas');
-const wallCtx = wallCanvas.getContext('2d');
-wallCanvas.width = wallCanvas.height = grid;
-
-wallCtx.fillStyle = 'black';
-wallCtx.fillRect(0, 0, grid, grid);
-wallCtx.fillStyle = 'white';
-wallCtx.fillRect(0, 0, grid - 2, grid - 2);
-wallCtx.fillStyle = '#a9a9a9';
-wallCtx.fillRect(2, 2, grid - 4, grid - 4);
-
-// create a mapping of object types
-const types = {
-  wall: '▉',
-  softWall: 1,
-  bomb: 2
-};
-
-// keep track of all entities
-let entities = [];
-
-// keep track of what is in every cell of the game using a 2d array. the
-// template is used to note where walls are and where soft walls cannot spawn.
-// '▉' represents a wall
-// 'x' represents a cell that cannot have a soft wall (player start zone)
-let cells = [];
-const template = [
-  ['▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉'],
-  ['▉','x','x',   ,   ,   ,   ,   ,   ,   ,   ,   ,'x','x','▉'],
-  ['▉','x','▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉','x','▉'],
-  ['▉','x',   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,'x','▉'],
-  ['▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉'],
-  ['▉',   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,'▉'],
-  ['▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉'],
-  ['▉',   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,'▉'],
-  ['▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉'],
-  ['▉','x',   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,   ,'x','▉'],
-  ['▉','x','▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉',   ,'▉','x','▉'],
-  ['▉','x','x',   ,   ,   ,   ,   ,   ,   ,   ,   ,'x','x','▉'],
-  ['▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉','▉']
-];
-
-// populate the level with walls and soft walls
-function generateLevel() {
-  cells = [];
-
-  for (let row = 0; row < numRows; row++) {
-    cells[row] = [];
-
-    for (let col = 0; col < numCols; col++) {
-
-      // 90% chance cells will contain a soft wall
-      if (!template[row][col] && Math.random() < 0.90) {
-        cells[row][col] = types.softWall;
+    // --- LOOP ---
+    let last = 0;
+    function loop(ts) {
+      requestAnimationFrame(loop);
+      let dt = ts - last; last = ts;
+      context.clearRect(0,0,canvas.width,canvas.height);
+      for(let r=0; r<numRows; r++) for(let c=0; c<numCols; c++) {
+        if(cells[r][c]===types.wall) context.drawImage(wallCanvas, c*grid, r*grid);
+        if(cells[r][c]===types.softWall) context.drawImage(softWallCanvas, c*grid, r*grid);
       }
-      else if (template[row][col] === types.wall) {
-        cells[row][col] = types.wall;
-      }
-    }
-  }
-}
-
-// blow up a bomb and its surrounding tiles
-function blowUpBomb(bomb) {
-
-  // bomb has already exploded so don't blow up again
-  if (!bomb.alive) return;
-
-  bomb.alive = false;
-
-  // remove bomb from grid
-  cells[bomb.row][bomb.col] = null;
-
-  // explode bomb outward by size
-  const dirs = [{
-    // up
-    row: -1,
-    col: 0
-  }, {
-    // down
-    row: 1,
-    col: 0
-  }, {
-    // left
-    row: 0,
-    col: -1
-  }, {
-    // right
-    row: 0,
-    col: 1
-  }];
-  dirs.forEach((dir) => {
-    for (let i = 0; i < bomb.size; i++) {
-      const row = bomb.row + dir.row * i;
-      const col = bomb.col + dir.col * i;
-      const cell = cells[row][col];
-
-      // stop the explosion if it hit a wall
-      if (cell === types.wall) {
-        return;
-      }
-
-      // center of the explosion is the first iteration of the loop
-      entities.push(new Explosion(row, col, dir, i === 0 ? true : false));
-      cells[row][col] = null;
-
-      // bomb hit another bomb so blow that one up too
-      if (cell === types.bomb) {
-
-        // find the bomb that was hit by comparing positions
-        const nextBomb = entities.find((entity) => {
-          return (
-            entity.type === types.bomb &&
-            entity.row === row && entity.col === col
-          );
-        });
-        blowUpBomb(nextBomb);
-      }
-
-      // stop the explosion if hit anything
-      if (cell) {
-        return;
-      }
-    }
-  });
-}
-
-// bomb constructor function
-function Bomb(row, col, size, owner) {
-  this.row = row;
-  this.col = col;
-  this.radius = grid * 0.4;
-  this.size = size;    // the size of the explosion
-  this.owner = owner;  // which player placed this bomb
-  this.alive = true;
-  this.type = types.bomb;
-
-  // bomb blows up after 3 seconds
-  this.timer = 3000;
-
-  // update the bomb each frame
-  this.update = function(dt) {
-    this.timer -= dt;
-
-    // blow up bomb if timer is done
-    if (this.timer <= 0) {
-      return blowUpBomb(this);
+      entities = entities.filter(e => e.alive);
+      entities.forEach(e => { e.update(dt); e.render(); });
+      player.render();
     }
 
-    // change the size of the bomb every half second. we can determine the size
-    // by dividing by 500 (half a second) and taking the ceiling of the result.
-    // then we can check if the result is even or odd and change the size
-    const interval = Math.ceil(this.timer / 500);
-    if (interval % 2 === 0) {
-      this.radius = grid * 0.4;
-    }
-    else {
-      this.radius = grid * 0.5;
-    }
-  };
-
-  // render the bomb each frame
-  this.render = function() {
-    const x = (this.col + 0.5) * grid;
-    const y = (this.row + 0.5) * grid;
-
-    // draw bomb
-    context.fillStyle = 'black';
-    context.beginPath();
-    context.arc(x, y, this.radius, 0, 2 * Math.PI);
-    context.fill();
-
-    // draw bomb fuse moving up and down with the bomb size
-    const fuseY = (this.radius === grid * 0.5 ? grid * 0.15 : 0);
-    context.strokeStyle = 'white';
-    context.lineWidth = 5;
-    context.beginPath();
-    context.arc(
-      (this.col + 0.75) * grid,
-      (this.row + 0.25) * grid - fuseY,
-      10, Math.PI, -Math.PI / 2
-    );
-    context.stroke();
-  };
-}
-
-// explosion constructor function
-function Explosion(row, col, dir, center) {
-  this.row = row;
-  this.col = col;
-  this.dir = dir;
-  this.alive = true;
-
-  // show explosion for 0.3 seconds
-  this.timer = 300;
-
-  // update the explosion each frame
-  this.update = function(dt) {
-    this.timer -= dt;
-
-    if (this.timer <=0) {
-      this.alive = false;
-    }
-  };
-
-  // render the explosion each frame
-  this.render = function() {
-    const x = this.col * grid;
-    const y = this.row * grid;
-    const horizontal = this.dir.col;
-    const vertical = this.dir.row;
-
-    // create a fire effect by stacking red, orange, and yellow on top of
-    // each other using progressively smaller rectangles
-    context.fillStyle = '#D72B16';  // red
-    context.fillRect(x, y, grid, grid);
-
-    context.fillStyle = '#F39642';  // orange
-
-    // determine how to draw based on if it's vertical or horizontal
-    // center draws both ways
-    if (center || horizontal) {
-      context.fillRect(x, y + 6, grid, grid - 12);
-    }
-    if (center || vertical) {
-      context.fillRect(x + 6, y, grid - 12, grid);
-    }
-
-    context.fillStyle = '#FFE5A8';  // yellow
-
-    if (center || horizontal) {
-      context.fillRect(x, y + 12, grid, grid - 24);
-    }
-    if (center || vertical) {
-      context.fillRect(x + 12, y, grid - 24, grid);
-    }
-  };
-}
-
-// player character (just a simple circle)
-const player = {
-  row: 1,
-  col: 1,
-  numBombs: 1,
-  bombSize: 3,
-  radius: grid * 0.35,
-  render() {
-    const x = (this.col + 0.5) * grid;
-    const y = (this.row + 0.5) * grid;
-
-    context.save();
-    context.fillStyle = 'white';
-    context.beginPath();
-    context.arc(x, y, this.radius, 0, 2 * Math.PI);
-    context.fill();
-  }
-}
-
-// game loop
-let last;
-let dt;
-function loop(timestamp) {
-  requestAnimationFrame(loop);
-  context.clearRect(0,0,canvas.width,canvas.height);
-
-  // calculate the time difference since the last update. requestAnimationFrame
-  // passes the current timestamp as a parameter to the loop
-  if (!last) {
-    last = timestamp;
-  }
-  dt = timestamp - last;
-  last = timestamp;
-
-  // update and render everything in the grid
-  for (let row = 0; row < numRows; row++) {
-    for (let col = 0; col < numCols; col++) {
-      switch(cells[row][col]) {
-        case types.wall:
-          context.drawImage(wallCanvas, col * grid, row * grid);
-          break;
-        case types.softWall:
-          context.drawImage(softWallCanvas, col * grid, row * grid);
-          break;
-      }
-    }
-  }
-
-  // update and render all entities
-  entities.forEach((entity) => {
-    entity.update(dt);
-    entity.render();
-  });
-
-  // remove dead entities
-  entities = entities.filter((entity) => entity.alive);
-
-  player.render();
-}
-
-// listen to keyboard events to move the snake
-document.addEventListener('keydown', function(e) {
-  let row = player.row;
-  let col = player.col;
-
-  // left arrow key
-  if (e.which === 37) {
-    col--;
-  }
-  // up arrow key
-  else if (e.which === 38) {
-    row--;
-  }
-  // right arrow key
-  else if (e.which === 39) {
-    col++;
-  }
-  // down arrow key
-  else if (e.which === 40) {
-    row++;
-  }
-  // space key (bomb)
-  else if (
-    e.which === 32 && !cells[row][col] &&
-    // count the number of bombs the player has placed
-    entities.filter((entity) => {
-      return entity.type === types.bomb && entity.owner === player
-    }).length < player.numBombs
-  ) {
-    // place bomb
-    const bomb = new Bomb(row, col, player.bombSize, player);
-    entities.push(bomb);
-    cells[row][col] = types.bomb;
-  }
-
-  // don't move the player if something is already at that position
-  if (!cells[row][col]) {
-    player.row = row;
-    player.col = col;
-  }
-});
-
-// start the game
-generateLevel();
-requestAnimationFrame(loop);
-</script>
+    generateLevel();
+    requestAnimationFrame(loop);
+  </script>
 </body>
 </html>
