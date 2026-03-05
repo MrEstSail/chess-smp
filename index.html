@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pro Legal Chess</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <style>
+        body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        #board { display: grid; grid-template-columns: repeat(8, 60px); border: 4px solid #555; margin-top: 20px; }
+        .sq { width: 60px; height: 60px; display: flex; justify-content: center; align-items: center; font-size: 40px; cursor: pointer; }
+        .w { background: #eeeed2; } .b { background: #769656; }
+        .selected { background: #f7f769 !important; }
+        .status-box { margin: 20px; padding: 10px; background: #333; border-radius: 5px; width: 480px; text-align: center; }
+        button { padding: 10px 20px; cursor: pointer; background: #769656; border: none; color: white; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2>Legal Move Chess</h2>
+
+    <div id="board"></div>
+
+    <div class="status-box">
+        <p id="status">White to move</p>
+        <button onclick="resetGame()">New Game</button>
+    </div>
+
+    <script>
+        const game = new Chess();
+        const boardEl = document.getElementById('board');
+        const statusEl = document.getElementById('status');
+        
+        let selectedSquare = null;
+
+        const pieceMap = {
+            'p': '♟', 'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚',
+            'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔'
+        };
+
+        function renderBoard() {
+            boardEl.innerHTML = '';
+            const board = game.board();
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const squareDiv = document.createElement('div');
+                    const squareName = String.fromCharCode(97 + c) + (8 - r);
+                    const piece = board[r][c];
+
+                    squareDiv.className = `sq ${(r + c) % 2 === 0 ? 'w' : 'b'}`;
+                    if (selectedSquare === squareName) squareDiv.classList.add('selected');
+                    
+                    if (piece) {
+                        // Use Chess.js piece notation: uppercase for white, lowercase for black
+                        const symbol = piece.color === 'w' ? piece.type.toUpperCase() : piece.type;
+                        squareDiv.textContent = pieceMap[symbol];
+                    }
+
+                    squareDiv.onclick = () => onSquareClick(squareName);
+                    boardEl.appendChild(squareDiv);
+                }
+            }
+            updateStatus();
+        }
+
+        function onSquareClick(square) {
+            if (selectedSquare === null) {
+                // First click: select piece if it's the right color
+                const piece = game.get(square);
+                if (piece && piece.color === game.turn()) {
+                    selectedSquare = square;
+                }
+            } else {
+                // Second click: attempt move
+                const move = game.move({
+                    from: selectedSquare,
+                    to: square,
+                    promotion: 'q' // Always promote to queen for simplicity
+                });
+
+                selectedSquare = null;
+                
+                if (move === null) {
+                    // If invalid move, try selecting the new square instead
+                    const piece = game.get(square);
+                    if (piece && piece.color === game.turn()) {
+                        selectedSquare = square;
+                    }
+                }
+            }
+            renderBoard();
+        }
+
+        function updateStatus() {
+            let status = '';
+            let moveColor = game.turn() === 'b' ? 'Black' : 'White';
+
+            if (game.in_checkmate()) {
+                status = `Game over, ${moveColor} is in checkmate.`;
+            } else if (game.in_draw()) {
+                status = 'Game over, drawn position.';
+            } else {
+                status = `${moveColor} to move`;
+                if (game.in_check()) status += ' (CHECK!)';
+            }
+            statusEl.textContent = status;
+        }
+
+        function resetGame() {
+            game.reset();
+            selectedSquare = null;
+            renderBoard();
+        }
+
+        renderBoard();
+    </script>
+</body>
+</html>
