@@ -1,1 +1,47 @@
 
+body {
+  margin: 0;
+  background: #0f1115;
+  color: white;
+  font-family: Arial;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  padding: 15px 40px;
+  background: #181b23;
+  align-items: center;
+}
+
+button {
+  background: #2f80ed;
+  border: none;
+  padding: 8px 14px;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.layout {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  padding: 40px;
+}
+
+.side {
+  width: 250px;
+}
+
+.board-area {
+  width: 600px;
+}
+
+#board {
+  width: 600px;
+}
+
+.highlight {
+  background: radial-gradient(circle, #00ff88 30%, transparent 70%);
+}
