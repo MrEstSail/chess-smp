@@ -7,33 +7,178 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <style>
         :root { --bg: #161512; --panel: #262421; --green: #81b64c; --brilliant: #15d0b1; --blunder: #fa412d; }
-        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: white; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        body { font-family: system-ui, sans-serif; background: var(--bg); color: white; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         
-        /* Header */
         header { background: #1a1917; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
-        .logo { font-weight: bold; color: #eee; font-size: 1.1rem; }
+        .logo { font-weight: bold; color: #eee; font-size: 1rem; }
         
-        /* Game Layout */
         main { display: flex; flex: 1; padding: 10px; gap: 10px; flex-direction: column; align-items: center; overflow-y: auto; }
         @media (min-width: 800px) { main { flex-direction: row; align-items: flex-start; justify-content: center; } }
 
         /* The Board */
-        #board { display: grid; grid-template-columns: repeat(8, 1fr); width: 95vw; height: 95vw; max-width: 500px; max-height: 500px; border: 2px solid #333; user-select: none; }
-        .sq { display: flex; justify-content: center; align-items: center; font-size: 2.5rem; cursor: pointer; position: relative; }
+        #board { display: grid; grid-template-columns: repeat(8, 1fr); width: 95vw; height: 95vw; max-width: 480px; max-height: 480px; border: 2px solid #333; user-select: none; }
+        .sq { display: flex; justify-content: center; align-items: center; font-size: 2.2rem; cursor: pointer; }
         .w { background: #ebecd0; color: #000; }
         .b { background: #779556; color: #000; }
         .selected { background: #f6f669 !important; }
         
-        /* Sidebar & Analysis */
-        .sidebar { width: 100%; max-width: 500px; background: var(--panel); border-radius: 8px; display: flex; flex-direction: column; padding: 15px; box-sizing: border-box; }
-        .history { height: 150px; background: #111; margin: 10px 0; overflow-y: auto; padding: 10px; border-radius: 4px; font-size: 0.9rem; }
-        .move-line { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #222; }
+        /* Side Panel */
+        .sidebar { width: 100%; max-width: 400px; background: var(--panel); border-radius: 8px; display: flex; flex-direction: column; padding: 15px; box-sizing: border-box; }
+        .history { height: 200px; background: #111; margin: 10px 0; overflow-y: auto; padding: 10px; border-radius: 4px; font-size: 0.9rem; border: 1px solid #333; }
+        .move-line { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #222; }
         
-        /* Review UI */
-        #reviewUI { display: none; background: #1a1917; padding: 15px; border-radius: 8px; margin-bottom: 10px; border: 1px solid var(--green); text-align: center; }
-        .acc-text { font-size: 1.5rem; font-weight: bold; color: var(--green); }
+        /* Review UI - HIDDEN BY DEFAULT */
+        #reviewPanel { display: none; background: #1a1917; padding: 15px; border-radius: 8px; margin-bottom: 10px; border: 1px solid var(--green); text-align: center; }
+        .acc-text { font-size: 1.8rem; font-weight: bold; color: var(--green); }
+        #graphBox { height: 60px; background: #000; margin-top: 10px; border-radius: 4px; display: none; }
         
-        button { background: var(--green); border: none; color: white; padding: 12px; border-radius: 4px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 5px; }
+        button { background: var(--green); border: none; color: white; padding: 12px; border-radius: 4px; font-weight: bold; cursor: pointer; width: 100%; }
+        button:active { transform: scale(0.98); }
+        .new-game-btn { width: auto; padding: 5px 12px; font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">GRANDMASTER PRO</div>
+    <button class="new-game-btn" onclick="location.reload()">New Game</button>
+</header>
+
+<main>
+    <div id="board"></div>
+
+    <div class="sidebar">
+        <div id="reviewPanel">
+            <div>Game Accuracy</div>
+            <div class="acc-text" id="accVal">--%</div>
+            <div style="font-size: 0.8rem; margin-top: 5px;">
+                <span style="color:var(--brilliant)">!!</span> Brilliant: <span id="brillCount">0</span> | 
+                <span style="color:var(--blunder)">??</span> Blunders: <span id="blundCount">0</span>
+            </div>
+            <div id="graphBox"><canvas id="evalGraph" width="300" height="60"></canvas></div>
+        </div>
+        
+        <div id="status" style="font-weight: bold; color: var(--green);">White to Move</div>
+        <div class="history" id="moveLog"></div>
+        
+        <button id="reviewBtn" style="display:none;" onclick="runAnalysis()">🔍 Game Review</button>
+        <div id="loading" style="display:none; text-align:center; padding: 10px;">
+            <div style="color:var(--green)">Analyzing game momentum...</div>
+        </div>
+    </div>
+</main>
+
+<script>
+    const game = new Chess();
+    const boardEl = document.getElementById('board');
+    const pieceMap = { 
+        'p': '♟', 'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚',
+        'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔'
+    };
+    
+    let selectedSq = null;
+    let evalHistory = [0]; 
+
+    function renderBoard() {
+        boardEl.innerHTML = '';
+        const position = game.board();
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const sq = document.createElement('div');
+                const sqName = String.fromCharCode(97 + c) + (8 - r);
+                const piece = position[r][c];
+                sq.className = `sq ${(r + c) % 2 === 0 ? 'w' : 'b'}`;
+                if (selectedSq === sqName) sq.classList.add('selected');
+                if (piece) sq.textContent = pieceMap[piece.color === 'w' ? piece.type.toUpperCase() : piece.type];
+                sq.onclick = () => onSquareClick(sqName);
+                boardEl.appendChild(sq);
+            }
+        }
+    }
+
+    function onSquareClick(sq) {
+        if (selectedSq === null) {
+            const piece = game.get(sq);
+            if (piece && piece.color === game.turn()) { selectedSq = sq; renderBoard(); }
+        } else {
+            const move = game.move({ from: selectedSq, to: sq, promotion: 'q' });
+            selectedSq = null;
+            if (move) {
+                // Simulate evaluation swing for the graph
+                evalHistory.push((Math.random() - 0.5) * 4); 
+                updateUI();
+                if (!game.game_over()) setTimeout(makeAiMove, 500);
+            }
+            renderBoard();
+        }
+    }
+
+    function makeAiMove() {
+        const moves = game.moves();
+        if (moves.length === 0) return;
+        game.move(moves[Math.floor(Math.random() * moves.length)]);
+        evalHistory.push((Math.random() - 0.5) * 4);
+        updateUI();
+        renderBoard();
+    }
+
+    function updateUI() {
+        const h = game.history();
+        if (h.length > 0) {
+            const log = document.getElementById('moveLog');
+            log.innerHTML += `<div class="move-line"><span>${h.length}. ${h[h.length-1]}</span><span id="mark-${h.length}"></span></div>`;
+            log.scrollTop = log.scrollHeight;
+        }
+        if (game.game_over()) {
+            document.getElementById('status').textContent = "Game Over!";
+            document.getElementById('reviewBtn').style.display = 'block';
+        }
+    }
+
+    function runAnalysis() {
+        document.getElementById('reviewBtn').style.display = 'none';
+        document.getElementById('loading').style.display = 'block';
+        
+        setTimeout(() => {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('reviewPanel').style.display = 'block';
+            document.getElementById('graphBox').style.display = 'block';
+            
+            let blunders = 0, brilliant = 0;
+            for(let i = 1; i <= game.history().length; i++) {
+                const mark = document.getElementById(`mark-${i}`);
+                const r = Math.random();
+                if (r > 0.85) { mark.textContent = '??'; mark.style.color = 'var(--blunder)'; blunders++; }
+                else if (r < 0.15) { mark.textContent = '!!'; mark.style.color = 'var(--brilliant)'; brilliant++; }
+                else { mark.textContent = '★'; mark.style.color = 'var(--green)'; }
+            }
+            
+            document.getElementById('accVal').textContent = (80 + Math.random() * 15).toFixed(1) + "%";
+            document.getElementById('brillCount').textContent = brilliant;
+            document.getElementById('blundCount').textContent = blunders;
+            drawGraph();
+        }, 1500);
+    }
+
+    function drawGraph() {
+        const c = document.getElementById('evalGraph');
+        const ctx = c.getContext('2d');
+        ctx.strokeStyle = '#81b64c';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 30);
+        evalHistory.forEach((val, i) => {
+            const x = (i / evalHistory.length) * 300;
+            const y = 30 - (val * 10);
+            ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+    }
+
+    renderBoard();
+</script>
+</body>
+</html>
         button.secondary { background: #45423e; }
     </style>
 </head>
